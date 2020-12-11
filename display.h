@@ -50,11 +50,13 @@ extern "C" {
 #define DISPLAY_3942BG					0
 #define DISPLAY_5642BG					1
 #define DISPLAY_PDA54_14SEGMENTS		2
+#define DISPLAY_DVD						3
 
 //Prototypes
 void display_update(unsigned char I2C_display_address, unsigned char display_type, unsigned char* data_string, unsigned char decimal_dots_mask, unsigned char special_dots_mask);
 void dots_update(unsigned char I2C_display_address, unsigned char display_type, unsigned char decimal_dots_mask, unsigned char special_dots_mask);
 void clear_display(unsigned char I2C_display_address);
+void clear_buffer(unsigned char* data_string, unsigned char length);
 void display_init(unsigned char I2C_display_address);
 void turn_on_and_blink_display(unsigned char I2C_display_address, unsigned char display_blinking_mode);
 void turn_off_display(unsigned char I2C_display_address);

@@ -51,6 +51,18 @@ char* data_arrange_14segments (char* segment_output_buffer, char segments_number
 	return data_arrange(segment_output_buffer, segments_number, fourteen_segment_excitation_sequence, ascii_2_14segment, character_buffer);
 }
 
+char* remap_dvd_display(char* segment_output_buffer)
+{
+	for (unsigned char  index = 0; index <CHARACTER_BUFFER_SIZE; ++index)
+	{
+		segment_output_buffer [2 * index + 1] = segment_output_buffer [2 * index] >> 6;
+
+		segment_output_buffer [2 * index] = segment_output_buffer [2 * index] << 2;
+	}
+
+	return segment_output_buffer;
+}
+
 //Sets decimal dot in a defined position
 //Receives the own display buffer before being sent, the dot slot position on it and the digit where the dot has to be set
 //Returns the display buffer

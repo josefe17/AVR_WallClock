@@ -17,6 +17,7 @@ extern "C" {
 
 char* data_arrange (char* segment_output_buffer, char segments_number, const unsigned char* excitation_sequence,  unsigned int (*characterMappingFunction) (unsigned char), unsigned char* character_buffer);
 char* data_arrange_7segments (char* segment_output_buffer, char segments_number, unsigned char* character_buffer);
+char* remap_dvd_display(char* segment_output_buffer);
 char* data_arrange_14segments (char* segment_output_buffer, char segments_number, unsigned char* character_buffer);
 char* set_decimal_dot (char* data_buffer, unsigned char dot_slot_position, char dot_position);
 char* clear_decimal_dot (char* data_buffer, unsigned char dot_slot_position, char dot_position);

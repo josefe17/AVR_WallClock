@@ -22,11 +22,13 @@
 #define HT16K33_1_WRITE_ADDRESS	0b11100000
 #define HT16K33_2_WRITE_ADDRESS	0b11100010
 #define HT16K33_3_WRITE_ADDRESS	0b11100100
+#define HT16K33_4_WRITE_ADDRESS	0b11100110
 #define DS3231_WRITE_ADDRESS	0b11010000
 #define BRIGHTNESS_CHANNEL		3
 
 /*Data buffers*/
 unsigned char str_buffer[8]="        ";
+const unsigned char str_buffer_test[11]="0123456    ";
 volatile time_data current_time;
 unsigned char power_fail_flag;
 
@@ -34,6 +36,10 @@ unsigned char power_fail_flag;
 unsigned int fast_skip_count;
 unsigned int fast_skip_counter;
 unsigned char fast_skip_enable;
+
+/*Cogwheel resources*/
+unsigned char lastSecondAtCogwheelUpdate;
+unsigned char cogwheelLastMask;
 
 /*Prototypes*/
 /*ADC*/
@@ -81,6 +87,10 @@ void modify_month_once(fsm_t* this);
 void blinkYear (fsm_t* this);
 void modify_year(fsm_t* this);
 void modify_year_once(fsm_t* this);
+
+/* Aux functions*/
+void startCogWheel();
+unsigned char updateCogwheel();
 
 /*Clock FSM states*/
 typedef enum
@@ -188,14 +198,18 @@ int main (void)
 	display_init(HT16K33_1_WRITE_ADDRESS);
 	display_init(HT16K33_2_WRITE_ADDRESS);
 	display_init(HT16K33_3_WRITE_ADDRESS);
+	display_init(HT16K33_4_WRITE_ADDRESS);
 	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, 0, 0);
 	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, 0, 0);
 	display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, str_buffer, 0, 0);
+	display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, str_buffer, 0, 0);
 	adc_buffer=(ReadADC(3)>>4)&0x0F;
 	set_brightness_display(HT16K33_1_WRITE_ADDRESS,adc_buffer);	
 	set_brightness_display(HT16K33_2_WRITE_ADDRESS,adc_buffer);	
 	set_brightness_display(HT16K33_3_WRITE_ADDRESS,adc_buffer);
+	set_brightness_display(HT16K33_4_WRITE_ADDRESS,adc_buffer);
 	timer0_tick_init(T0_PRESCALER_256, MS_TIMER_COUNT, MS_DELAY_CYCLES);
+	startCogWheel();
 
 	while(1)
 	{	
@@ -208,6 +222,7 @@ int main (void)
 		set_brightness_display(HT16K33_1_WRITE_ADDRESS,adc_buffer);
 		set_brightness_display(HT16K33_2_WRITE_ADDRESS,adc_buffer);
 		set_brightness_display(HT16K33_3_WRITE_ADDRESS,adc_buffer);
+		set_brightness_display(HT16K33_4_WRITE_ADDRESS,adc_buffer);
 		fsm_fire(&clock_fsm);		
 		delay_until_tick();	
 		
@@ -373,6 +388,7 @@ void showtime(fsm_t* this)
 	str_buffer[7]=bcd2char(current_time.year%10);
 	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, (1<<1) | (1<<3), 0);
 	
+	clear_buffer(str_buffer, 8);
 	str_buffer[0]=bcd2char(dec2bcd(current_time.hour)>>4);
 	str_buffer[1]=bcd2char(dec2bcd(current_time.hour));
 	str_buffer[2]=bcd2char(dec2bcd(current_time.min)>>4);
@@ -380,6 +396,10 @@ void showtime(fsm_t* this)
 	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
 
 	display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, (unsigned char*) getDayOfWeekSpanishNameUppercase8Char(current_time),  0, 0);
+
+	clear_buffer(str_buffer, 8);
+	display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, str_buffer, 0, updateCogwheel());
+
 }
 
 void showtime_and_stop_timer(fsm_t* this)
@@ -399,23 +419,16 @@ void blinktime(fsm_t* this)
 {
 	if (1 & current_time.sec)
 	{
-	showtime(this);	
+		showtime(this);
 	}
 	else 
 	{
-		str_buffer[0]=' ';
-		str_buffer[1]=' ';
-		str_buffer[2]=' ';
-		str_buffer[3]=' ';
-		str_buffer[4]=' ';
-		str_buffer[5]=' ';
-		str_buffer[6]=' ';
-		str_buffer[7]=' ';
+		clear_buffer(str_buffer, 8);
 		display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, 0, 0);
 		display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, str_buffer, 0, 0);
+		display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, str_buffer, 0, 0);
+		display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, str_buffer, 0, 0);
 	}
-	
-	
 }
 
 void clear_blinktime_and_showtime( fsm_t* this )
@@ -820,6 +833,30 @@ void modify_year(fsm_t* this)
 	}
 	update_timestamp_to_RTC(DS3231_WRITE_ADDRESS, current_time, DATA_DECIMAL);
 	showYear(this);
+}
+
+void startCogWheel()
+{
+	lastSecondAtCogwheelUpdate = current_time.sec;
+	cogwheelLastMask = 1;
+}
+
+unsigned char updateCogwheel()
+{
+	unsigned char currentSec = current_time.sec;
+	if (lastSecondAtCogwheelUpdate != currentSec)
+	{
+		lastSecondAtCogwheelUpdate = currentSec;
+		if (cogwheelLastMask >= 128)
+		{
+			cogwheelLastMask = 1;
+		}
+		else
+		{
+			cogwheelLastMask = cogwheelLastMask << 1;
+		}
+	}
+	return cogwheelLastMask;
 }
 
 void InitADC(void)
