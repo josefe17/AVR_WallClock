@@ -10,6 +10,7 @@
 #include "rtc.h"
 #include "TWI_Master.h"
 #include "timer0_tick.h"
+#include "lm75b_basic_driver.h"
 #include "fsm.h"
 #include "GPIO.h"
 
@@ -24,6 +25,7 @@
 #define HT16K33_3_WRITE_ADDRESS	0b11100100
 #define HT16K33_4_WRITE_ADDRESS	0b11100110
 #define DS3231_WRITE_ADDRESS	0b11010000
+#define LM75B_WRITE_ADDRESS 	0b10010000
 #define BRIGHTNESS_CHANNEL		3
 
 /*Data buffers*/
@@ -40,6 +42,9 @@ unsigned char fast_skip_enable;
 /*Cogwheel resources*/
 unsigned char lastSecondAtCogwheelUpdate;
 unsigned char cogwheelLastMask;
+
+/* Temperature resources */
+signed int ambientTemperature;
 
 /*Prototypes*/
 /*ADC*/
@@ -88,9 +93,14 @@ void blinkYear (fsm_t* this);
 void modify_year(fsm_t* this);
 void modify_year_once(fsm_t* this);
 
-/* Aux functions*/
+/* Cogwheel functions*/
 void startCogWheel();
 unsigned char updateCogwheel();
+
+/* Thermometer functions */
+void startThermometer();
+char* readThermometer();
+char* readThermometerDecimal();
 
 /*Clock FSM states*/
 typedef enum
@@ -225,48 +235,6 @@ int main (void)
 		set_brightness_display(HT16K33_4_WRITE_ADDRESS,adc_buffer);
 		fsm_fire(&clock_fsm);		
 		delay_until_tick();	
-		
-//
-//#ifdef temperature
-		//current_time=retrieve_timestamp_from_RTC(DS3231_WRITE_ADDRESS, DATA_BCD);
-		//str_buffer[0]=bcd2char(current_time.hour>>4);
-		//str_buffer[1]=bcd2char(current_time.hour);
-		//str_buffer[2]=bcd2char(current_time.min>>4);
-		//str_buffer[3]=bcd2char(current_time.min);
-		//
-		//temperature_C=get_temperature(DS3231_WRITE_ADDRESS);
-		//if (temperature_C<0)
-		//{
-			//str_buffer[4]='-';
-			//temperature_C*=-1;
-		//}
-		//else
-		//{
-			//str_buffer[4]=' ';
-		//}
-		//aux=(unsigned char) (temperature_C>>8); //Casted to char
-		//str_buffer[6]=bcd2char(dec2bcd(aux));
-		//str_buffer[5]=bcd2char((dec2bcd(aux))>>4);		
-		//str_buffer[7]='C';		
-		//display_update(HT16K33_WRITE_ADDRESS, str_buffer, 0, SECOND_DEGREES_DOT_MASK | (FIRST_COLON_MASK & current_time.sec));
-		//set_brightness_display(HT16K33_WRITE_ADDRESS,(ReadADC(3)>>4)&0x0F);	
-		//delay_until_tick();	
-//#endif // temperature
-//#ifdef calendar
-		//current_time=retrieve_timestamp_from_RTC(DS3231_WRITE_ADDRESS, DATA_BCD);
-		//str_buffer[0]=bcd2char(current_time.dayM>>4);
-		//str_buffer[1]=bcd2char(current_time.dayM);
-		//str_buffer[2]=bcd2char(current_time.month>>4);
-		//str_buffer[3]=bcd2char(current_time.month);
-		//str_buffer[4]=bcd2char((unsigned char) (current_time.year>>12));
-		//str_buffer[5]=bcd2char((unsigned char) (current_time.year>>8));
-		//str_buffer[6]=bcd2char((unsigned char) (current_time.year>>4));
-		//str_buffer[7]=bcd2char((unsigned char) current_time.year);
-		//display_update(HT16K33_WRITE_ADDRESS, str_buffer, (1<<1)|(1<<3), 0);
-		//set_brightness_display(HT16K33_WRITE_ADDRESS,(ReadADC(3)>>4)&0x0F);
-		//delay_until_tick();		
-//#endif // calendar
-		
 	}	
 }
 
@@ -368,15 +336,6 @@ void increment_fast_skip_timer(void)
 
 void showtime(fsm_t* this)
 {	
-	//str_buffer[0]=bcd2char(dec2bcd(current_time.hour)>>4);
-	//str_buffer[1]=bcd2char(dec2bcd(current_time.hour));
-	//str_buffer[2]=bcd2char(dec2bcd(current_time.min)>>4);
-	//str_buffer[3]=bcd2char(dec2bcd(current_time.min));
-	//str_buffer[4]=bcd2char(dec2bcd(current_time.dayM)>>4);
-	//str_buffer[5]=bcd2char(dec2bcd(current_time.dayM));
-	//str_buffer[6]=bcd2char(dec2bcd(current_time.month)>>4);
-	//str_buffer[7]=bcd2char(dec2bcd(current_time.month));
-	//display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, (1<<5), FIRST_COLON_MASK & current_time.sec);
 	
 	str_buffer[0]=bcd2char(dec2bcd(current_time.dayM)>>4);
 	str_buffer[1]=bcd2char(dec2bcd(current_time.dayM));
@@ -397,8 +356,7 @@ void showtime(fsm_t* this)
 
 	display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, (unsigned char*) getDayOfWeekSpanishNameUppercase8Char(current_time),  0, 0);
 
-	clear_buffer(str_buffer, 8);
-	display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, str_buffer, 0, updateCogwheel());
+	display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, readThermometer(0), 0, updateCogwheel());
 
 }
 
@@ -858,6 +816,116 @@ unsigned char updateCogwheel()
 	}
 	return cogwheelLastMask;
 }
+
+void startThermometer()
+{
+	(void) readLM75BTemperature_1deg(LM75B_WRITE_ADDRESS);
+}
+
+char* readThermometer()
+{
+	ambientTemperature = readLM75BTemperature_1deg(LM75B_WRITE_ADDRESS);
+	signed int temperatureInteger = 0;
+	if (ambientTemperature >= -28) // > -0.875
+	{
+		temperatureInteger = (ambientTemperature >> 8) & 0x00FF;
+		if (temperatureInteger / 100 > 0)
+		{
+			str_buffer[0] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 100));
+		}
+		else
+		{
+			str_buffer[0]=' ';
+		}
+		if (temperatureInteger / 10 > 0)
+		{
+			str_buffer[1] = bcd2char((dec2bcd((unsigned char) temperatureInteger)) >> 4);
+		}
+		else
+		{
+			str_buffer[1] = ' ';
+		}
+
+	}
+	else
+	{
+		temperatureInteger = ((ambientTemperature * -1) >> 8) & 0x00FF;
+		// Stick - to the first digit
+		if (temperatureInteger / 10 > 0)
+		{
+			str_buffer[0] = '-';
+			str_buffer[1] = bcd2char((dec2bcd((unsigned char) temperatureInteger)) >> 4);
+		}
+		else
+		{
+			str_buffer[0] = ' ';
+			str_buffer[1] = '-';
+		}
+	}
+	str_buffer[2] = bcd2char(dec2bcd((unsigned char) temperatureInteger));
+
+	str_buffer[3]='º';
+	str_buffer[4]='C';
+	str_buffer[5]=' ';
+	str_buffer[6]=' ';
+	str_buffer[7]=' ';
+	return str_buffer;
+}
+
+char* readThermometerDecimal()
+{
+	ambientTemperature = readLM75BTemperature_1deg(LM75B_WRITE_ADDRESS);
+	signed int temperatureInteger = 0;
+	signed int temperatureDecimal = 0;
+	if (ambientTemperature < (-0.125 * 32))
+	{
+		temperatureInteger = ((ambientTemperature * -1) >> 8) & 0x00FF;
+		temperatureDecimal = (((ambientTemperature * -1) >> 6) & 0x03) * 25;
+		// Stick - to the first digit
+		if (temperatureInteger / 10 > 0)
+		{
+			str_buffer[0] = '-';
+			str_buffer[1] = bcd2char((dec2bcd((unsigned char) temperatureInteger)) >> 4);
+		}
+		else
+		{
+			str_buffer[0] = ' ';
+			str_buffer[1] = '-';
+		}
+	}
+	else
+	{
+		temperatureInteger = (ambientTemperature >> 8) & 0x00FF;
+		temperatureDecimal = ((ambientTemperature >> 6) & 0x03) * 25;
+		if (temperatureInteger / 100 > 0)
+		{
+			str_buffer[0] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 100));
+		}
+		else
+		{
+			str_buffer[0]=' ';
+		}
+		if (temperatureInteger / 10 > 0)
+		{
+			str_buffer[1] = bcd2char((dec2bcd((unsigned char) temperatureInteger)) >> 4);
+		}
+		else
+		{
+			str_buffer[1] = ' ';
+		}
+	}
+	str_buffer[2] = bcd2char(dec2bcd((unsigned char) temperatureInteger));
+
+	str_buffer[3] = bcd2char((dec2bcd((unsigned char) temperatureDecimal)) >> 4);
+	str_buffer[4] = bcd2char(dec2bcd((unsigned char) temperatureDecimal));
+
+	str_buffer[5]='º';
+	str_buffer[6]='C';
+	str_buffer[7]=' ';
+	return str_buffer;
+
+}
+
 
 void InitADC(void)
 {

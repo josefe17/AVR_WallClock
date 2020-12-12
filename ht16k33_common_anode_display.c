@@ -180,6 +180,8 @@ unsigned int ascii_2_7segment(unsigned char character)
         case '.':
         case ',': return 0b10000000;
 
+        case 'º': return 0b01100011;
+
         case '_':
         default: return 0b00001000; //_
 

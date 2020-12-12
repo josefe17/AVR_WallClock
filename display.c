@@ -73,6 +73,25 @@ void display_update(unsigned char I2C_display_address, unsigned char display_typ
 			{
 				clear_decimal_dot(display_TX_buffer_t.fields.segments, 2 * 6, 0);
 			}
+			// Decimal dot
+			if (decimal_dots_mask & 1) // Hour-minute colons
+			{
+				set_decimal_dot(display_TX_buffer_t.fields.segments, 3, 1);
+			}
+
+			else
+			{
+				clear_decimal_dot(display_TX_buffer_t.fields.segments, 3, 1);
+			}
+
+			if (decimal_dots_mask & 2) // Minute-seconds colons
+			{
+				set_decimal_dot(display_TX_buffer_t.fields.segments, 5, 1);
+			}
+			else
+			{
+				clear_decimal_dot(display_TX_buffer_t.fields.segments, 5, 1);
+			}
 	}	 	
 
 			
