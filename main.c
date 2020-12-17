@@ -10,6 +10,7 @@
 #include "rtc.h"
 #include "TWI_Master.h"
 #include "timer0_tick.h"
+#include "fastSkipTimer.h"
 #include "lm75b_basic_driver.h"
 #include "fsm.h"
 #include "GPIO.h"
@@ -46,11 +47,6 @@ const unsigned char str_buffer_test[11]="0123456    ";
 volatile time_data current_time;
 unsigned char power_fail_flag;
 
-/*Fast skip timer resources*/
-unsigned int fast_skip_count;
-unsigned int fast_skip_counter;
-unsigned char fast_skip_enable;
-
 /*Cogwheel resources*/
 unsigned char lastSecondAtCogwheelUpdate;
 unsigned char cogwheelLastMask;
@@ -58,15 +54,13 @@ unsigned char cogwheelLastMask;
 /* Temperature resources */
 signed int ambientTemperature;
 
+/* ADC resources */
+volatile unsigned char adc_buffer;
+
 /*Prototypes*/
 /*ADC*/
 void InitADC(void);
 unsigned char ReadADC(unsigned char ADCchannel);
-/*Fast skip timer*/
-void start_fast_skip_timer(unsigned int timeout);
-void stop_fast_skip_timer(void);
-unsigned char check_fast_skip_timer(fsm_t* this);
-void increment_fast_skip_timer(void);
 
 /*Clock FSM input functions*/
 unsigned char check_no_buttons(fsm_t* this);
@@ -74,11 +68,10 @@ unsigned char check_skip_long_press(fsm_t* this);
 unsigned char check_any_buttons(fsm_t* this);
 unsigned char check_idle(fsm_t* this);
 unsigned char check_set_clock(fsm_t* this);
-unsigned char check_set(fsm_t* this);
-unsigned char check_clock(fsm_t* this);
 unsigned char check_arrows(fsm_t* this);
 unsigned char check_blinking_flag(fsm_t* this);
 unsigned char check_no_blinking_flag(fsm_t* this);
+unsigned char check_fast_skip_timer(fsm_t* this);
 
 /*Clock FSM output functions*/
 void showtime(fsm_t* this);
@@ -147,8 +140,6 @@ typedef enum
 
 int main (void)
 {	
-	volatile unsigned char adc_buffer=0;
-		
 	volatile fsm_t clock_fsm; //Clock FSM model
 	
 	fsm_trans_t clock_tt[] = {
@@ -168,8 +159,7 @@ int main (void)
 	{SETHOUR_FAST,		check_arrows,			SETHOUR_FAST,		modify_hour	},				//If we are on fast skip and arrows are hold down, hour is increased or decreased rapidly (once or each fsm cycle)
 	{SETHOUR_FAST,		check_no_buttons,		SETHOUR,			blinkhour	},				//If we are on fast skip and no keys are pressed, goes to single adjustment and forces hour to blink 
 	{ SETHOUR,			check_no_buttons,		SETHOUR, 			blinkhour	},				//If we are on single adjustment and no buttons are pressed, hour keeps blinking
-	{ SETHOUR,			check_clock,			DEBOUNCE_IDLE, 		updatetime	},				//If we are on single adjustment and clock is pressed, time is stored (fake, is stored each time is incremented o decremented) and goes to normal view
-	{ SETHOUR,			check_set,				DEBOUNCE_SETMIN, 	blinkminute	},				//If we are on single adjustment and set is pressed, the minutes start blinking and can be modified now
+	{ SETHOUR,			check_set_clock,		DEBOUNCE_SETMIN, 	blinkminute	},				//If we are on single adjustment and set is pressed, the minutes start blinking and can be modified now
 	{ SETHOUR,			check_arrows,			DEBOUNCE_SETHOUR, 	modify_hour_once},			//If we press any of both arrows, clock will increment or decrement once and will go to debounce state waiting for release or long press (also starts fast skip timer)
 		
 	{DEBOUNCE_SETMIN,	check_no_buttons,		SETMIN,				blinkminute	},				//Minute adjustment, identical as hour
@@ -178,8 +168,7 @@ int main (void)
 	{SETMIN_FAST,		check_arrows,			SETMIN_FAST,		modify_minute	},
 	{SETMIN_FAST,		check_no_buttons,		SETMIN,				blinkminute	},		
 	{ SETMIN,			check_no_buttons,		SETMIN, 			blinkminute	},
-	{ SETMIN,			check_clock,			DEBOUNCE_IDLE,		updatetime	},	
-	{ SETMIN,			check_set,				DEBOUNCE_SETDAYM,	blinkdayM	},		
+	{ SETMIN,			check_set_clock,		DEBOUNCE_SETDAYM,	blinkdayM	},
 	{ SETMIN,			check_arrows,			DEBOUNCE_SETMIN,	modify_minute_once	},	
 		
 	{DEBOUNCE_SETDAYM,	check_no_buttons,		SETDAYM,			blinkdayM	},				//Day adjustment, identical as hour
@@ -188,8 +177,7 @@ int main (void)
 	{SETDAYM_FAST,		check_arrows,			SETDAYM_FAST,		modify_dayM	},
 	{SETDAYM_FAST,		check_no_buttons,		SETDAYM,			blinkdayM	},	
 	{ SETDAYM,			check_no_buttons,		SETDAYM, 			blinkdayM	},
-	{ SETDAYM,			check_clock,			DEBOUNCE_IDLE,		updatetime	},
-	{ SETDAYM,			check_set,				DEBOUNCE_SETMONTH,	blinkMonth	},
+	{ SETDAYM,			check_set_clock,		DEBOUNCE_SETMONTH,	blinkMonth	},
 	{ SETDAYM,			check_arrows,			DEBOUNCE_SETDAYM,	modify_dayM_once	},
 		
 	{DEBOUNCE_SETMONTH,	check_no_buttons,		SETMONTH,			blinkMonth	},				//Month adjustment, identical as hour
@@ -198,8 +186,7 @@ int main (void)
 	{SETMONTH_FAST,		check_arrows,			SETMONTH_FAST,		modify_month},
 	{SETMONTH_FAST,		check_no_buttons,		SETMONTH,			blinkMonth	},
 	{ SETMONTH,			check_no_buttons,		SETMONTH, 			blinkMonth	},
-	{ SETMONTH,			check_clock,			DEBOUNCE_IDLE,		updatetime	},
-	{ SETMONTH,			check_set,				DEBOUNCE_SETYEAR,	blinkYear	},
+	{ SETMONTH,			check_set_clock,	    DEBOUNCE_SETYEAR,	blinkYear	},
 	{ SETMONTH,			check_arrows,			DEBOUNCE_SETMONTH,	modify_month_once},
 			
 	{DEBOUNCE_SETYEAR,	check_no_buttons,		SETYEAR,			blinkYear	},				//Year adjustment, changes default blink and show screens
@@ -208,8 +195,7 @@ int main (void)
 	{SETYEAR_FAST,		check_arrows,			SETYEAR_FAST,		modify_year	},
 	{SETYEAR_FAST,		check_no_buttons,		SETYEAR,			blinkYear	},
 	{ SETYEAR,			check_no_buttons,		SETYEAR, 			blinkYear	},
-	{ SETYEAR,			check_clock,			DEBOUNCE_IDLE,		updatetime	},				//On set or clock pressing, goes to idle screen
-	{ SETYEAR,			check_set,				DEBOUNCE_IDLE,		updatetime	},
+	{ SETYEAR,			check_set_clock,	    DEBOUNCE_IDLE,		updatetime	},
 	{ SETYEAR,			check_arrows,			DEBOUNCE_SETYEAR,	modify_year_once},
 		
 			
@@ -221,6 +207,7 @@ int main (void)
 	
 	gpio_init();	//Inits GPIO												
 	TWI_Master_Initialise(); //Inits I2C
+	adc_buffer = 0;
 	InitADC();	
 	sei();
 	display_init(HT16K33_1_WRITE_ADDRESS);
@@ -245,13 +232,12 @@ int main (void)
 		power_fail_flag=check_oscillator_fault(DS3231_WRITE_ADDRESS);
 		increment_fast_skip_timer();
 		update_button_flags();
-		adc_buffer=(ReadADC(3)>>4)&0x0F;
-		adc_buffer = 0x0F; // Override
-		set_brightness_display(HT16K33_1_WRITE_ADDRESS,adc_buffer);
-		set_brightness_display(HT16K33_2_WRITE_ADDRESS,adc_buffer);
-		set_brightness_display(HT16K33_3_WRITE_ADDRESS,adc_buffer);
-		set_brightness_display(HT16K33_4_WRITE_ADDRESS,adc_buffer);
-		fsm_fire(&clock_fsm);		
+		adc_buffer=ReadADC(0);
+		set_brightness_display(HT16K33_1_WRITE_ADDRESS,adc_buffer >> 4);
+		set_brightness_display(HT16K33_2_WRITE_ADDRESS,adc_buffer >> 4);
+		set_brightness_display(HT16K33_3_WRITE_ADDRESS,adc_buffer >> 4);
+		set_brightness_display(HT16K33_4_WRITE_ADDRESS,adc_buffer >> 4);
+		fsm_fire(&clock_fsm);
 		delay_until_tick();	
 	}	
 }
@@ -285,21 +271,11 @@ unsigned char check_updown(fsm_t* this)
 unsigned char check_no_updown(fsm_t* this)
 {
 	return (!((button_flags & UP_BUTTON_MASK) && (button_flags & DOWN_BUTTON_MASK))); //If up or down is released
-}									   
+}
+
 unsigned char check_set_clock(fsm_t* this)
 {
-	//return ((button_flags & SET_BUTTON_MASK) && (button_flags & CLOCK_BUTTON_MASK)); //If clock and set are pressed
-	return (button_flags & CLOCK_BUTTON_MASK); //If clock and set are pressed
-}
-
-unsigned char check_set(fsm_t* this)
-{
-	return (button_flags & SET_BUTTON_MASK);
-}
-
-unsigned char check_clock(fsm_t* this)
-{
-	return (button_flags & CLOCK_BUTTON_MASK);
+	return (button_flags & CLOCK_BUTTON_MASK); //If clock is pressed
 }
 
 unsigned char check_arrows(fsm_t* this)
@@ -317,40 +293,13 @@ unsigned char check_no_blinking_flag(fsm_t* this)
 	return (!power_fail_flag);
 }
 
-
-/*FSM Output functions*/
-
-void start_fast_skip_timer(unsigned int timeout)
-{
-	fast_skip_count=timeout;
-	fast_skip_counter=0;
-	fast_skip_enable=1;	
-}
-
-void stop_fast_skip_timer(void)
-{
-	fast_skip_enable=0;
-}
-
 unsigned char check_fast_skip_timer(fsm_t* this)
 {
-	return (fast_skip_enable && (fast_skip_counter>=fast_skip_count));
+	return is_fast_skip_timer_over();
 }
 
-void increment_fast_skip_timer(void)
-{
-	if (fast_skip_enable)
-	{
-		if (fast_skip_counter<255)
-		{
-			++fast_skip_counter;
-		}
-	}
-	else
-	{
-		fast_skip_counter=0;
-	}
-}
+
+/*FSM Output functions*/
 
 void showtime(fsm_t* this)
 {	
@@ -596,7 +545,6 @@ void blinkdayM (fsm_t* this)
 	str_buffer[2]=bcd2char(dec2bcd(current_time.min)>>4);
 	str_buffer[3]=bcd2char(dec2bcd(current_time.min));
 	updateDisplay2( str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
-
 }
 
 void modify_dayM_once(fsm_t* this)
@@ -650,7 +598,6 @@ void modify_dayM(fsm_t* this)
 	}
 	update_timestamp_to_RTC(DS3231_WRITE_ADDRESS, current_time, DATA_DECIMAL);
 	showtime(this);
-	
 }
 
 void blinkMonth (fsm_t* this)
@@ -679,7 +626,6 @@ void blinkMonth (fsm_t* this)
 	str_buffer[2]=bcd2char(dec2bcd(current_time.min)>>4);
 	str_buffer[3]=bcd2char(dec2bcd(current_time.min));
 	updateDisplay2(str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
-	
 
 }
 
@@ -831,6 +777,7 @@ unsigned char updateCogwheel()
 		{
 			cogwheelLastMask = cogwheelLastMask << 1;
 		}
+
 	}
 	return cogwheelLastMask;
 }

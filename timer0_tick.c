@@ -6,6 +6,7 @@
  */ 
 
 #include "timer0_tick.h"
+#include "fastSkipTimer.h"
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -38,6 +39,7 @@ ISR (TIMER0_COMPA_vect)
 	{
 		++timeout_flag;							//Set flag
 		interrupts_counter=0;					//Reset timer
+		increment_fast_skip_timer();
 		TCNT0=0;
 	}
 }

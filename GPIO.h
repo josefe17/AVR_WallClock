@@ -10,7 +10,7 @@
 #define GPIO_H_
 
 #define GPIO_PORTB_MASK		0b00110011		//Pins used as gpio
-#define GPIO_PORTC_MASK		0b00000011
+#define GPIO_PORTC_MASK		0b00000000
 #define GPIO_PORTD_MASK		0b11110011
 
 #define	GPIO_DDRB_MASK		0b00000000		//All inputs
