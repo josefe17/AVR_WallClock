@@ -29,7 +29,19 @@
 #define BRIGHTNESS_CHANNEL		3
 
 /*Data buffers*/
-unsigned char str_buffer[8]="        ";
+unsigned char str_buffer[8] = "        ";
+unsigned char display1_buffer[8] = "        ";
+unsigned char display1_decimal_dots_buffer = 0;
+unsigned char display1_special_dots_buffer = 0;
+unsigned char display2_buffer[8] = "        ";
+unsigned char display2_decimal_dots_buffer = 0;
+unsigned char display2_special_dots_buffer = 0;
+unsigned char display3_buffer[8] = "        ";
+unsigned char display3_decimal_dots_buffer = 0;
+unsigned char display3_special_dots_buffer = 0;
+unsigned char display4_buffer[8] = "        ";
+unsigned char display4_decimal_dots_buffer = 0;
+unsigned char display4_special_dots_buffer = 0;
 const unsigned char str_buffer_test[11]="0123456    ";
 volatile time_data current_time;
 unsigned char power_fail_flag;
@@ -101,6 +113,12 @@ unsigned char updateCogwheel();
 void startThermometer();
 char* readThermometer();
 char* readThermometerDecimal();
+
+/* Display_functions */
+unsigned char updateDisplay1(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask);
+unsigned char updateDisplay2(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask);
+unsigned char updateDisplay3(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask);
+unsigned char updateDisplay4(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask);
 
 /*Clock FSM states*/
 typedef enum
@@ -209,10 +227,10 @@ int main (void)
 	display_init(HT16K33_2_WRITE_ADDRESS);
 	display_init(HT16K33_3_WRITE_ADDRESS);
 	display_init(HT16K33_4_WRITE_ADDRESS);
-	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, 0, 0);
-	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, 0, 0);
-	display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, str_buffer, 0, 0);
-	display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, str_buffer, 0, 0);
+	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, display1_buffer, display1_decimal_dots_buffer, display1_special_dots_buffer);
+	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_3942BG, display2_buffer, display2_decimal_dots_buffer, display2_special_dots_buffer);
+	display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, display3_buffer, display3_decimal_dots_buffer, display3_special_dots_buffer);
+	display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, display4_buffer, display4_decimal_dots_buffer, display4_special_dots_buffer);
 	adc_buffer=(ReadADC(3)>>4)&0x0F;
 	set_brightness_display(HT16K33_1_WRITE_ADDRESS,adc_buffer);	
 	set_brightness_display(HT16K33_2_WRITE_ADDRESS,adc_buffer);	
@@ -345,18 +363,18 @@ void showtime(fsm_t* this)
 	str_buffer[5]=bcd2char(((current_time.year%1000)/100));
 	str_buffer[6]=bcd2char(((current_time.year%100)/10));
 	str_buffer[7]=bcd2char(current_time.year%10);
-	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, (1<<1) | (1<<3), 0);
+	updateDisplay1(str_buffer, (1<<1) | (1<<3), 0);
 	
 	clear_buffer(str_buffer, 8);
 	str_buffer[0]=bcd2char(dec2bcd(current_time.hour)>>4);
 	str_buffer[1]=bcd2char(dec2bcd(current_time.hour));
 	str_buffer[2]=bcd2char(dec2bcd(current_time.min)>>4);
 	str_buffer[3]=bcd2char(dec2bcd(current_time.min));
-	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
+	updateDisplay2(str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
 
-	display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, (unsigned char*) getDayOfWeekSpanishNameUppercase8Char(current_time),  0, 0);
+	updateDisplay3((unsigned char*) getDayOfWeekSpanishNameUppercase8Char(current_time),  0, 0);
 
-	display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, readThermometer(0), 0, updateCogwheel());
+	updateDisplay4(readThermometer(0), 0, updateCogwheel());
 
 }
 
@@ -382,10 +400,10 @@ void blinktime(fsm_t* this)
 	else 
 	{
 		clear_buffer(str_buffer, 8);
-		display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, 0, 0);
-		display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, str_buffer, 0, 0);
-		display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, str_buffer, 0, 0);
-		display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, str_buffer, 0, 0);
+		updateDisplay1(str_buffer, 0, 0);
+		updateDisplay2(str_buffer, 0, 0);
+		updateDisplay3(str_buffer, 0, 0);
+		updateDisplay4(str_buffer, 0, 0);
 	}
 }
 
@@ -420,7 +438,7 @@ void blinkhour(fsm_t* this)
 	}
 	str_buffer[2]=bcd2char(dec2bcd(current_time.min)>>4);
 	str_buffer[3]=bcd2char(dec2bcd(current_time.min));
-	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
+	updateDisplay2(str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
 	
 	str_buffer[0]=bcd2char(dec2bcd(current_time.dayM)>>4);
 	str_buffer[1]=bcd2char(dec2bcd(current_time.dayM));
@@ -430,7 +448,7 @@ void blinkhour(fsm_t* this)
 	str_buffer[5]=bcd2char(((current_time.year%1000)/100));
 	str_buffer[6]=bcd2char(((current_time.year%100)/10));
 	str_buffer[7]=bcd2char(current_time.year%10);
-	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, (1<<1) | (1<<3), 0);
+	updateDisplay1(str_buffer, (1<<1) | (1<<3), 0);
 }
 
 
@@ -495,7 +513,7 @@ void blinkminute(fsm_t* this)
 	}
 	str_buffer[0]=bcd2char(dec2bcd(current_time.hour)>>4);
 	str_buffer[1]=bcd2char(dec2bcd(current_time.hour));
-	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
+	updateDisplay2(str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
 	
 	str_buffer[0]=bcd2char(dec2bcd(current_time.dayM)>>4);
 	str_buffer[1]=bcd2char(dec2bcd(current_time.dayM));
@@ -505,7 +523,7 @@ void blinkminute(fsm_t* this)
 	str_buffer[5]=bcd2char(((current_time.year%1000)/100));
 	str_buffer[6]=bcd2char(((current_time.year%100)/10));
 	str_buffer[7]=bcd2char(current_time.year%10);
-	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, (1<<1) | (1<<3), 0);
+	updateDisplay1(str_buffer, (1<<1) | (1<<3), 0);
 }
 
 void modify_minute_once(fsm_t* this)
@@ -571,13 +589,13 @@ void blinkdayM (fsm_t* this)
 	str_buffer[5]=bcd2char(((current_time.year%1000)/100));
 	str_buffer[6]=bcd2char(((current_time.year%100)/10));
 	str_buffer[7]=bcd2char(current_time.year%10);
-	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, (1<<1) | (1<<3), 0);
+	updateDisplay1(str_buffer, (1<<1) | (1<<3), 0);
 	
 	str_buffer[0]=bcd2char(dec2bcd(current_time.hour)>>4);
 	str_buffer[1]=bcd2char(dec2bcd(current_time.hour));
 	str_buffer[2]=bcd2char(dec2bcd(current_time.min)>>4);
 	str_buffer[3]=bcd2char(dec2bcd(current_time.min));
-	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);	
+	updateDisplay2( str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
 
 }
 
@@ -654,13 +672,13 @@ void blinkMonth (fsm_t* this)
 	str_buffer[5]=bcd2char(((current_time.year%1000)/100));
 	str_buffer[6]=bcd2char(((current_time.year%100)/10));
 	str_buffer[7]=bcd2char(current_time.year%10);
-	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, (1<<1) | (1<<3), 0);
+	updateDisplay1(str_buffer, (1<<1) | (1<<3), 0);
 	
 	str_buffer[0]=bcd2char(dec2bcd(current_time.hour)>>4);
 	str_buffer[1]=bcd2char(dec2bcd(current_time.hour));
 	str_buffer[2]=bcd2char(dec2bcd(current_time.min)>>4);
 	str_buffer[3]=bcd2char(dec2bcd(current_time.min));
-	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
+	updateDisplay2(str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
 	
 
 }
@@ -730,13 +748,13 @@ void blinkYear (fsm_t* this)
 	str_buffer[1]=bcd2char(dec2bcd(current_time.dayM));
 	str_buffer[2]=bcd2char(dec2bcd(current_time.month)>>4);
 	str_buffer[3]=bcd2char(dec2bcd(current_time.month));
-	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, str_buffer, (1<<1) | (1<<3), 0);
+	updateDisplay1(str_buffer, (1<<1) | (1<<3), 0);
 	
 	str_buffer[0]=bcd2char(dec2bcd(current_time.hour)>>4);
 	str_buffer[1]=bcd2char(dec2bcd(current_time.hour));
 	str_buffer[2]=bcd2char(dec2bcd(current_time.min)>>4);
 	str_buffer[3]=bcd2char(dec2bcd(current_time.min));
-	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
+	updateDisplay2(str_buffer, 0, (1 & current_time.sec)<<FIRST_COLON_56INCH_SHIFTS);
 }
 
 void showYear_and_stop_timer(fsm_t* this)
@@ -925,6 +943,119 @@ char* readThermometerDecimal()
 	return str_buffer;
 
 }
+
+unsigned char updateDisplay1(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask)
+{
+	unsigned char updateFlag = 0;
+	for (unsigned char i = 0; i < 8; ++i)
+	{
+		if (str[i] != display1_buffer[i])
+		{
+			updateFlag = 0xFF;
+			break; // To avoid testing the whole buffer when a mismatch occurs
+		}
+	}
+	if (decimal_dots_mask != display1_decimal_dots_buffer ||  special_dots_mask != display1_special_dots_buffer)
+	{
+		updateFlag = 0xFF;
+	}
+	if (updateFlag)
+	{
+		for (unsigned char i = 0; i < 8; ++i)
+		{
+			display1_buffer[i] = str[i];
+		}
+		display1_decimal_dots_buffer = decimal_dots_mask;
+		display1_special_dots_buffer = special_dots_mask;
+		display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, display1_buffer, display1_decimal_dots_buffer, display1_special_dots_buffer);
+	}
+	return updateFlag;
+}
+
+unsigned char updateDisplay2(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask)
+{
+	unsigned char updateFlag = 0;
+	for (unsigned char i = 0; i < 8; ++i)
+	{
+		if (str[i] != display2_buffer[i])
+		{
+			updateFlag = 0xFF;
+			break; // To avoid testing the whole buffer when a mismatch occurs
+		}
+	}
+	if (decimal_dots_mask != display2_decimal_dots_buffer ||  special_dots_mask != display2_special_dots_buffer)
+	{
+		updateFlag = 0xFF;
+	}
+	if (updateFlag)
+	{
+		for (unsigned char i = 0; i < 8; ++i)
+		{
+			display2_buffer[i] = str[i];
+		}
+		display2_decimal_dots_buffer = decimal_dots_mask;
+		display2_special_dots_buffer = special_dots_mask;
+		display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, display2_buffer, display2_decimal_dots_buffer, display2_special_dots_buffer);
+	}
+	return updateFlag;
+}
+
+unsigned char updateDisplay3(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask)
+{
+	unsigned char updateFlag = 0;
+	for (unsigned char i = 0; i < 8; ++i)
+	{
+		if (str[i] != display3_buffer[i])
+		{
+			updateFlag = 0xFF;
+			break; // To avoid testing the whole buffer when a mismatch occurs
+		}
+	}
+	if (decimal_dots_mask != display3_decimal_dots_buffer ||  special_dots_mask != display3_special_dots_buffer)
+	{
+		updateFlag = 0xFF;
+	}
+	if (updateFlag)
+	{
+		for (unsigned char i = 0; i < 8; ++i)
+		{
+			display3_buffer[i] = str[i];
+		}
+		display3_decimal_dots_buffer = decimal_dots_mask;
+		display3_special_dots_buffer = special_dots_mask;
+		display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, display3_buffer, display3_decimal_dots_buffer, display3_special_dots_buffer);
+	}
+	return updateFlag;
+}
+
+unsigned char updateDisplay4(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask)
+{
+	unsigned char updateFlag = 0;
+	for (unsigned char i = 0; i < 8; ++i)
+	{
+		if (str[i] != display4_buffer[i])
+		{
+			updateFlag = 0xFF;
+			break; // To avoid testing the whole buffer when a mismatch occurs
+		}
+	}
+	if (decimal_dots_mask != display4_decimal_dots_buffer ||  special_dots_mask != display4_special_dots_buffer)
+	{
+		updateFlag = 0xFF;
+	}
+	if (updateFlag)
+	{
+		for (unsigned char i = 0; i < 8; ++i)
+		{
+			display4_buffer[i] = str[i];
+		}
+		display4_decimal_dots_buffer = decimal_dots_mask;
+		display4_special_dots_buffer = special_dots_mask;
+		display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, display4_buffer, display4_decimal_dots_buffer, display4_special_dots_buffer);
+	}
+	return updateFlag;
+}
+
 
 
 void InitADC(void)
