@@ -25,6 +25,7 @@
 #define HT16K33_2_WRITE_ADDRESS	0b11100010
 #define HT16K33_3_WRITE_ADDRESS	0b11100100
 #define HT16K33_4_WRITE_ADDRESS	0b11100110
+#define HT16K33_5_WRITE_ADDRESS	0b11101000
 #define DS3231_WRITE_ADDRESS	0b11010000
 #define LM75B_WRITE_ADDRESS 	0b10010000
 #define BRIGHTNESS_CHANNEL		3
@@ -211,16 +212,16 @@ int main (void)
 	InitADC();	
 	sei();
 	display_init(HT16K33_1_WRITE_ADDRESS);
-	display_init(HT16K33_2_WRITE_ADDRESS);
+	display_init(HT16K33_5_WRITE_ADDRESS);
 	display_init(HT16K33_3_WRITE_ADDRESS);
 	display_init(HT16K33_4_WRITE_ADDRESS);
 	display_update(HT16K33_1_WRITE_ADDRESS, DISPLAY_3942BG, display1_buffer, display1_decimal_dots_buffer, display1_special_dots_buffer);
-	display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_3942BG, display2_buffer, display2_decimal_dots_buffer, display2_special_dots_buffer);
+	display_update(HT16K33_5_WRITE_ADDRESS, DISPLAY_SC15, display2_buffer, display2_decimal_dots_buffer, display2_special_dots_buffer);
 	display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, display3_buffer, display3_decimal_dots_buffer, display3_special_dots_buffer);
 	display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, display4_buffer, display4_decimal_dots_buffer, display4_special_dots_buffer);
-	adc_buffer=(ReadADC(3)>>4)&0x0F;
+	adc_buffer=(ReadADC(0) >> 4) & 0x0F;
 	set_brightness_display(HT16K33_1_WRITE_ADDRESS,adc_buffer);	
-	set_brightness_display(HT16K33_2_WRITE_ADDRESS,adc_buffer);	
+	set_brightness_display(HT16K33_5_WRITE_ADDRESS,( adc_buffer + 2 < 16) ? adc_buffer + 2 : adc_buffer);
 	set_brightness_display(HT16K33_3_WRITE_ADDRESS,adc_buffer);
 	set_brightness_display(HT16K33_4_WRITE_ADDRESS,adc_buffer);
 	timer0_tick_init(T0_PRESCALER_256, MS_TIMER_COUNT, MS_DELAY_CYCLES);
@@ -232,11 +233,11 @@ int main (void)
 		power_fail_flag=check_oscillator_fault(DS3231_WRITE_ADDRESS);
 		increment_fast_skip_timer();
 		update_button_flags();
-		adc_buffer=ReadADC(0);
-		set_brightness_display(HT16K33_1_WRITE_ADDRESS,adc_buffer >> 4);
-		set_brightness_display(HT16K33_2_WRITE_ADDRESS,adc_buffer >> 4);
-		set_brightness_display(HT16K33_3_WRITE_ADDRESS,adc_buffer >> 4);
-		set_brightness_display(HT16K33_4_WRITE_ADDRESS,adc_buffer >> 4);
+		adc_buffer=(ReadADC(0) >> 4) & 0x0F;
+		set_brightness_display(HT16K33_1_WRITE_ADDRESS, adc_buffer);
+		set_brightness_display(HT16K33_5_WRITE_ADDRESS, (adc_buffer + 2 < 16) ? adc_buffer + 2 : adc_buffer);
+		set_brightness_display(HT16K33_3_WRITE_ADDRESS, adc_buffer);
+		set_brightness_display(HT16K33_4_WRITE_ADDRESS, adc_buffer);
 		fsm_fire(&clock_fsm);
 		delay_until_tick();	
 	}	
@@ -359,7 +360,7 @@ void blinktime(fsm_t* this)
 void clear_blinktime_and_showtime( fsm_t* this )
 {
 	turn_on_and_blink_display(HT16K33_1_WRITE_ADDRESS, HT16K33_DISPLAY_BLINKING_OFF);
-	turn_on_and_blink_display(HT16K33_2_WRITE_ADDRESS, HT16K33_DISPLAY_BLINKING_OFF);	
+	turn_on_and_blink_display(HT16K33_5_WRITE_ADDRESS, HT16K33_DISPLAY_BLINKING_OFF);
 	showtime(this);
 
 }
@@ -368,7 +369,7 @@ void clear_oscillator_fault_and_showtime(fsm_t* this)
 {
 	clear_oscillator_fault(DS3231_WRITE_ADDRESS);
 	turn_on_and_blink_display(HT16K33_1_WRITE_ADDRESS, HT16K33_DISPLAY_BLINKING_OFF);
-	turn_on_and_blink_display(HT16K33_2_WRITE_ADDRESS, HT16K33_DISPLAY_BLINKING_OFF);
+	turn_on_and_blink_display(HT16K33_5_WRITE_ADDRESS, HT16K33_DISPLAY_BLINKING_OFF);
 	showtime(this);
 }
 
@@ -942,7 +943,7 @@ unsigned char updateDisplay2(unsigned char* str, unsigned char decimal_dots_mask
 		}
 		display2_decimal_dots_buffer = decimal_dots_mask;
 		display2_special_dots_buffer = special_dots_mask;
-		display_update(HT16K33_2_WRITE_ADDRESS, DISPLAY_5642BG, display2_buffer, display2_decimal_dots_buffer, display2_special_dots_buffer);
+		display_update(HT16K33_5_WRITE_ADDRESS, DISPLAY_SC15, display2_buffer, display2_decimal_dots_buffer, display2_special_dots_buffer);
 	}
 	return updateFlag;
 }

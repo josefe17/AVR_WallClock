@@ -23,6 +23,7 @@ union display_TX_buffer
 void display_update(unsigned char I2C_display_address, unsigned char display_type, unsigned char* data_string, unsigned char decimal_dots_mask, unsigned char special_dots_mask)
 {
 	unsigned char aux;
+	unsigned char* output_buffer;
 	
 	display_TX_buffer_t.fields.TWI_address=I2C_display_address;
 	display_TX_buffer_t.fields.command=HT16K33_RAM_BEGIN_ADDRESS; //Points to data input
@@ -34,7 +35,6 @@ void display_update(unsigned char I2C_display_address, unsigned char display_typ
 			set_multiple_decimal_dot (display_TX_buffer_t.fields.segments, SPECIAL_DOTS_SLOT_56INCH, special_dots_mask);
 		break;
 		case DISPLAY_3942BG:
-		default:
 			data_arrange_7segments(display_TX_buffer_t.fields.segments, HT16K33_SEGMENTS_BUFFER_SIZE, data_string);
 			set_multiple_decimal_dot (display_TX_buffer_t.fields.segments, DECIMAL_DOTS_SLOT, decimal_dots_mask);
 			set_multiple_decimal_dot (display_TX_buffer_t.fields.segments, SPECIAL_DOTS_SLOT, special_dots_mask);
@@ -92,9 +92,31 @@ void display_update(unsigned char I2C_display_address, unsigned char display_typ
 			{
 				clear_decimal_dot(display_TX_buffer_t.fields.segments, 5, 1);
 			}
-	}	 	
-
-			
+		break;
+		default:
+		case DISPLAY_SC15:
+			output_buffer = &display_TX_buffer_t.fields.segments;
+			for (unsigned char index = 0; index < DISPLAY_SC15_SIZE; ++index)
+			{
+				// * 2 due to electrical wirigin of the HT16k33, it uses 2 slots per enable
+				// to allow 8 characters with up to 16 segments each one
+				output_buffer[index * 2] = (unsigned char) ascii_2_7segment(data_string[index]);
+				if (decimal_dots_mask & (1 << index))
+				{
+					output_buffer[index * 2] |= (1 << 7);
+				}
+				else
+				{
+					output_buffer[index * 2] &= ~(1 << 7);
+				}
+			}
+			if (special_dots_mask == FIRST_COLON_56INCH_MASK)
+			{
+				output_buffer[2] |= (1 << 7);
+				output_buffer[4] |= (1 << 7);
+			}
+		break;
+	}
 	TWI_Start_Transceiver_With_Data(display_TX_buffer_t.array, HT16K33_TWI_BUFFER_SIZE);
 }
 

@@ -17,6 +17,8 @@ extern "C" {
 #define HT16K33_COMMAND_BUFFER_SIZE		2
 #define HT16K33_SEGMENTS_BUFFER_SIZE 	16
 
+#define DISPLAY_SC15_SIZE 4
+
 //Commands
 #define HT16K33_RAM_BEGIN_ADDRESS		0
 
@@ -51,6 +53,7 @@ extern "C" {
 #define DISPLAY_5642BG					1
 #define DISPLAY_PDA54_14SEGMENTS		2
 #define DISPLAY_DVD						3
+#define DISPLAY_SC15					4
 
 //Prototypes
 void display_update(unsigned char I2C_display_address, unsigned char display_type, unsigned char* data_string, unsigned char decimal_dots_mask, unsigned char special_dots_mask);
