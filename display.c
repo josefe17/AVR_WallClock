@@ -115,6 +115,24 @@ void display_update(unsigned char I2C_display_address, unsigned char display_typ
 				output_buffer[2] |= (1 << 7);
 				output_buffer[4] |= (1 << 7);
 			}
+			for (unsigned char index = 0; index < DISPLAY_SC15_SIZE; ++index)
+			{
+				//Replicate the same data for the last 4 COMS as they are AND hardwired
+				output_buffer[index * 2 + 8] = (unsigned char) ascii_2_7segment(data_string[index]);
+				if (decimal_dots_mask & (1 << index))
+				{
+					output_buffer[index * 2 + 8] |= (1 << 7);
+				}
+				else
+				{
+					output_buffer[index * 2 + 8] &= ~(1 << 7);
+				}
+			}
+			if (special_dots_mask == FIRST_COLON_56INCH_MASK)
+			{
+				output_buffer[2 + 8] |= (1 << 7);
+				output_buffer[4 + 8] |= (1 << 7);
+			}
 		break;
 	}
 	TWI_Start_Transceiver_With_Data(display_TX_buffer_t.array, HT16K33_TWI_BUFFER_SIZE);
