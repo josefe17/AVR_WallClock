@@ -1,6 +1,7 @@
 
 #define F_CPU 16000000UL
 
+#include <math.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
@@ -19,6 +20,13 @@
 #define MS_DELAY_CYCLES	1
 
 #define FAST_SKIP_TIMER_DELAY_CYCLES 1000 //MS_DELAY_CYCLES times  = 1 s
+
+#define THERMISTOR_BETA 3950.0
+#define CESIUS2KELVIN_CONSTANT 273.15
+#define THERMISTOR_SERIES_RESISTOR_OHMS 10000.0
+#define THERMISTOR_NOMINAL_OHMS 10000.0
+#define THERMISTOR_TEMPERATURE_NOMINAL (CESIUS2KELVIN_CONSTANT+25.0)
+
 
 /*HW ADDRESSES*/
 #define HT16K33_1_WRITE_ADDRESS	0b11100000
@@ -54,6 +62,7 @@ unsigned char cogwheelLastMask;
 
 /* Temperature resources */
 signed int ambientTemperature;
+double thermistorTemperature;
 
 /* ADC resources */
 volatile unsigned char adc_buffer;
@@ -107,6 +116,11 @@ unsigned char updateCogwheel();
 void startThermometer();
 char* readThermometer();
 char* readThermometerDecimal();
+
+/* Thermistor functions */
+char* printThermistorTemperature();
+char* printThermistorTemperatureDecimal();
+double readThermistor (unsigned char rawReading);
 
 /* Display_functions */
 unsigned char updateDisplay1(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask);
@@ -234,6 +248,7 @@ int main (void)
 		increment_fast_skip_timer();
 		update_button_flags();
 		adc_buffer=(ReadADC(0) >> 4) & 0x0F;
+		thermistorTemperature=readThermistor(ReadADC(1));
 		set_brightness_display(HT16K33_1_WRITE_ADDRESS, adc_buffer);
 		set_brightness_display(HT16K33_5_WRITE_ADDRESS, (adc_buffer + 2 < 16) ? adc_buffer + 2 : adc_buffer);
 		set_brightness_display(HT16K33_3_WRITE_ADDRESS, adc_buffer);
@@ -324,7 +339,8 @@ void showtime(fsm_t* this)
 
 	updateDisplay3((unsigned char*) getDayOfWeekSpanishNameUppercase8Char(current_time),  0, 0);
 
-	updateDisplay4(readThermometer(0), 0, updateCogwheel());
+	//updateDisplay4(readThermometer(0), 0, updateCogwheel());
+	updateDisplay4(printThermistorTemperature(), 0, updateCogwheel());
 
 }
 
@@ -889,7 +905,114 @@ char* readThermometerDecimal()
 	str_buffer[6]='C';
 	str_buffer[7]=' ';
 	return str_buffer;
+}
 
+char* printThermistorTemperature()
+{
+	signed int temperatureInteger = (signed int) thermistorTemperature;
+	unsigned char temperatureFirstDecimal = ((unsigned char) (thermistorTemperature * 10.0)) % 10;
+	if (thermistorTemperature >= 0)
+	{
+		if (temperatureInteger / 100 > 0)
+		{
+			str_buffer[0] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 100));
+		}
+		else
+		{
+			str_buffer[0]=' ';
+		}
+		if (temperatureInteger / 10 > 0)
+		{
+			str_buffer[1] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 10));
+		}
+		else
+		{
+			str_buffer[1] = ' ';
+		}
+		str_buffer[2] = bcd2char(dec2bcd((unsigned char) temperatureInteger % 10));
+	}
+	else
+	{
+		temperatureInteger *= -1;
+		// Stick - to the first digit
+		if (temperatureInteger / 10 > 0)
+		{
+			str_buffer[0] = '-';
+			str_buffer[1] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 10));
+		}
+		else
+		{
+			str_buffer[0] = ' ';
+			str_buffer[1] = '-';
+		}
+		str_buffer[2] = bcd2char(dec2bcd((unsigned char) temperatureInteger % 10));
+	}
+	str_buffer[3]='º';
+	str_buffer[4]='C';
+	str_buffer[5]=' ';
+	str_buffer[6]=' ';
+	str_buffer[7]=' ';
+	return str_buffer;
+}
+
+char* printThermistorTemperatureDecimal()
+{
+	signed int temperatureInteger = (signed int) thermistorTemperature;
+	unsigned char temperatureFirstDecimal = ((unsigned char) (thermistorTemperature * 10.0)) % 10;
+	// Same as integer by now
+	if (thermistorTemperature >= 0)
+	{
+		if (temperatureInteger / 100 > 0)
+		{
+			str_buffer[0] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 100));
+		}
+		else
+		{
+			str_buffer[0]=' ';
+		}
+		if (temperatureInteger / 10 > 0)
+		{
+			str_buffer[1] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 10));
+		}
+		else
+		{
+			str_buffer[1] = ' ';
+		}
+		str_buffer[2] = bcd2char(dec2bcd((unsigned char) temperatureInteger % 10));
+	}
+	else
+	{
+		temperatureInteger *= -1;
+		// Stick - to the first digit
+		if (temperatureInteger / 10 > 0)
+		{
+			str_buffer[0] = '-';
+			str_buffer[1] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 10));
+		}
+		else
+		{
+			str_buffer[0] = ' ';
+			str_buffer[1] = '-';
+		}
+		str_buffer[2] = bcd2char(dec2bcd((unsigned char) temperatureInteger % 10));
+	}
+	str_buffer[3]='º';
+	str_buffer[4]='C';
+	str_buffer[5]=' ';
+	str_buffer[6]=' ';
+	str_buffer[7]=' ';
+	return str_buffer;
+}
+
+double readThermistor (unsigned char rawReading)
+{
+	double resistance = THERMISTOR_SERIES_RESISTOR_OHMS * ((double) rawReading / (255.0 - (double) rawReading));
+	double steinhart = resistance / THERMISTOR_NOMINAL_OHMS;     // (R/Ro)
+	steinhart = log(steinhart);                  // ln(R/Ro)
+	steinhart /= THERMISTOR_BETA;                   // 1/B * ln(R/Ro)
+	steinhart += (1.0 / (THERMISTOR_TEMPERATURE_NOMINAL)); // + (1/To)
+	steinhart = 1.0 / steinhart;                 // Invert
+	return steinhart;
 }
 
 unsigned char updateDisplay1(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask)
