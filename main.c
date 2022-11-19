@@ -14,6 +14,7 @@
 #include "lm75b_basic_driver.h"
 #include "fsm.h"
 #include "GPIO.h"
+#include "ADCDriver.h"
 
 #define MS_TIMER_COUNT	78
 #define MS_DELAY_CYCLES	1
@@ -59,9 +60,6 @@ signed int ambientTemperature;
 volatile unsigned char adc_buffer;
 
 /*Prototypes*/
-/*ADC*/
-void InitADC(void);
-unsigned char ReadADC(unsigned char ADCchannel);
 
 /*Clock FSM input functions*/
 unsigned char check_no_buttons(fsm_t* this);
@@ -209,7 +207,7 @@ int main (void)
 	gpio_init();	//Inits GPIO												
 	TWI_Master_Initialise(); //Inits I2C
 	adc_buffer = 0;
-	InitADC();	
+	initADC((1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0), ADC_10BIT_RESOLUTION);
 	sei();
 	display_init(HT16K33_1_WRITE_ADDRESS);
 	display_init(HT16K33_5_WRITE_ADDRESS);
@@ -219,7 +217,7 @@ int main (void)
 	display_update(HT16K33_5_WRITE_ADDRESS, DISPLAY_SC15, display2_buffer, display2_decimal_dots_buffer, display2_special_dots_buffer);
 	display_update(HT16K33_3_WRITE_ADDRESS, DISPLAY_PDA54_14SEGMENTS, display3_buffer, display3_decimal_dots_buffer, display3_special_dots_buffer);
 	display_update(HT16K33_4_WRITE_ADDRESS, DISPLAY_DVD, display4_buffer, display4_decimal_dots_buffer, display4_special_dots_buffer);
-	adc_buffer=(ReadADC(0) >> 4) & 0x0F;
+	adc_buffer = (unsigned char) ((readADC(0) >> 6) & 0x0F); // 4 MSB
 	set_brightness_display(HT16K33_1_WRITE_ADDRESS,adc_buffer);	
 	set_brightness_display(HT16K33_5_WRITE_ADDRESS,( adc_buffer + 2 < 16) ? adc_buffer + 2 : adc_buffer);
 	set_brightness_display(HT16K33_3_WRITE_ADDRESS,adc_buffer);
@@ -233,7 +231,7 @@ int main (void)
 		power_fail_flag=check_oscillator_fault(DS3231_WRITE_ADDRESS);
 		increment_fast_skip_timer();
 		update_button_flags();
-		adc_buffer=(ReadADC(0) >> 4) & 0x0F;
+		adc_buffer = (unsigned char) ((readADC(0) >> 6) & 0x0F); // 4 MSB
 		set_brightness_display(HT16K33_1_WRITE_ADDRESS, adc_buffer);
 		set_brightness_display(HT16K33_5_WRITE_ADDRESS, (adc_buffer + 2 < 16) ? adc_buffer + 2 : adc_buffer);
 		set_brightness_display(HT16K33_3_WRITE_ADDRESS, adc_buffer);
@@ -1003,28 +1001,3 @@ unsigned char updateDisplay4(unsigned char* str, unsigned char decimal_dots_mask
 	}
 	return updateFlag;
 }
-
-
-
-void InitADC(void)
-{
-	// Select Vref=AVcc & Left justified
-	ADMUX |= (1<<REFS0) | (1<<ADLAR);
-	//set prescaler to 128 and enable ADC
-	ADCSRA |= (1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0)|(1<<ADEN);
-}
-
-unsigned char ReadADC(unsigned char ADCchannel)
-{
-	//select ADC channel with safety mask
-	ADMUX = (ADMUX & 0xF0) | (ADCchannel & 0x0F);
-	//single conversion mode
-	ADCSRA |= (1<<ADSC);
-	// wait until ADC conversion is complete
-	while( ADCSRA & (1<<ADSC) );
-	return ADCH;
-}
-
-
-
-	
