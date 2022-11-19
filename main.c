@@ -15,6 +15,7 @@
 #include "fsm.h"
 #include "GPIO.h"
 #include "ADCDriver.h"
+#include "NTCSensor.h"
 
 #define MS_TIMER_COUNT	78
 #define MS_DELAY_CYCLES	1
@@ -55,6 +56,10 @@ unsigned char cogwheelLastMask;
 
 /* Temperature resources */
 signed int ambientTemperature;
+signed int ambientTemperatureTwoDecimals;
+unsigned int ntcSensorAverageCounter;
+unsigned long ntcSensorAverageAcumulator;
+unsigned int ntcSensorLastValidRaw;
 
 /* ADC resources */
 volatile unsigned char adc_buffer;
@@ -103,8 +108,8 @@ unsigned char updateCogwheel();
 
 /* Thermometer functions */
 void startThermometer();
-char* readThermometer();
-char* readThermometerDecimal();
+unsigned char* readThermometer();
+unsigned char* readThermometerDecimal();
 
 /* Display_functions */
 unsigned char updateDisplay1(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask);
@@ -202,7 +207,7 @@ int main (void)
 	};
 	
 	
-	fsm_init(&clock_fsm, IDLE, clock_tt, 0); //starts FSM
+	fsm_init((fsm_t*) &clock_fsm, IDLE, clock_tt, 0); //starts FSM
 	
 	gpio_init();	//Inits GPIO												
 	TWI_Master_Initialise(); //Inits I2C
@@ -236,7 +241,7 @@ int main (void)
 		set_brightness_display(HT16K33_5_WRITE_ADDRESS, (adc_buffer + 2 < 16) ? adc_buffer + 2 : adc_buffer);
 		set_brightness_display(HT16K33_3_WRITE_ADDRESS, adc_buffer);
 		set_brightness_display(HT16K33_4_WRITE_ADDRESS, adc_buffer);
-		fsm_fire(&clock_fsm);
+		fsm_fire((fsm_t*) &clock_fsm);
 		delay_until_tick();	
 	}	
 }
@@ -322,7 +327,7 @@ void showtime(fsm_t* this)
 
 	updateDisplay3((unsigned char*) getDayOfWeekSpanishNameUppercase8Char(current_time),  0, 0);
 
-	updateDisplay4(readThermometer(0), 0, updateCogwheel());
+	updateDisplay4(readThermometer(), 0, updateCogwheel());
 
 }
 
@@ -783,50 +788,48 @@ unsigned char updateCogwheel()
 
 void startThermometer()
 {
-	(void) readLM75BTemperature_1deg(LM75B_WRITE_ADDRESS);
+	NTCSensorAverageInit(1, 200, &ntcSensorAverageCounter, &ntcSensorAverageAcumulator, &ntcSensorLastValidRaw);
 }
 
-char* readThermometer()
+unsigned char* readThermometer()
 {
-	ambientTemperature = readLM75BTemperature_1deg(LM75B_WRITE_ADDRESS);
-	signed int temperatureInteger = 0;
-	if (ambientTemperature >= -28) // > -0.875
+	ambientTemperature = (signed int) round(readTempCelsius(1, 200, &ntcSensorAverageCounter, &ntcSensorAverageAcumulator, &ntcSensorLastValidRaw));
+	if (ambientTemperature >= 0) // > -0.875
 	{
-		temperatureInteger = (ambientTemperature >> 8) & 0x00FF;
-		if (temperatureInteger / 100 > 0)
+		if (ambientTemperature / 100 > 0)
 		{
-			str_buffer[0] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 100));
+			str_buffer[0] = bcd2char(dec2bcd((unsigned char) ambientTemperature / 100));
 		}
 		else
 		{
 			str_buffer[0]=' ';
 		}
-		if (temperatureInteger / 10 > 0)
+		if (ambientTemperature / 10 > 0)
 		{
-			str_buffer[1] = bcd2char((dec2bcd((unsigned char) temperatureInteger)) >> 4);
+			str_buffer[1] = bcd2char((dec2bcd((unsigned char) ambientTemperature)) >> 4);
 		}
 		else
 		{
 			str_buffer[1] = ' ';
 		}
+		str_buffer[2] = bcd2char(dec2bcd((unsigned char) ambientTemperature));
 
 	}
 	else
-	{
-		temperatureInteger = ((ambientTemperature * -1) >> 8) & 0x00FF;
+	{		
 		// Stick - to the first digit
-		if (temperatureInteger / 10 > 0)
+		if ((ambientTemperature * (-1)) / 10 > 0)
 		{
 			str_buffer[0] = '-';
-			str_buffer[1] = bcd2char((dec2bcd((unsigned char) temperatureInteger)) >> 4);
+			str_buffer[1] = bcd2char((dec2bcd((unsigned char) (ambientTemperature * (-1)))) >> 4);
 		}
 		else
 		{
 			str_buffer[0] = ' ';
 			str_buffer[1] = '-';
 		}
-	}
-	str_buffer[2] = bcd2char(dec2bcd((unsigned char) temperatureInteger));
+		str_buffer[2] = bcd2char(dec2bcd((unsigned char) (ambientTemperature * (-1))));
+	}	
 
 	str_buffer[3]='º';
 	str_buffer[4]='C';
@@ -836,15 +839,16 @@ char* readThermometer()
 	return str_buffer;
 }
 
-char* readThermometerDecimal()
+unsigned char* readThermometerDecimal()
 {
-	ambientTemperature = readLM75BTemperature_1deg(LM75B_WRITE_ADDRESS);
+	ambientTemperatureTwoDecimals = (signed int) round(100.0 * readTempCelsius(1, 200, &ntcSensorAverageCounter, &ntcSensorAverageAcumulator, &ntcSensorLastValidRaw));
+	ambientTemperature = ambientTemperatureTwoDecimals / 100;
 	signed int temperatureInteger = 0;
 	signed int temperatureDecimal = 0;
-	if (ambientTemperature < (-0.125 * 32))
+	if (ambientTemperatureTwoDecimals <= 0)
 	{
-		temperatureInteger = ((ambientTemperature * -1) >> 8) & 0x00FF;
-		temperatureDecimal = (((ambientTemperature * -1) >> 6) & 0x03) * 25;
+		temperatureInteger = ambientTemperatureTwoDecimals / (-100);
+		temperatureDecimal = (ambientTemperatureTwoDecimals * -1) % 100;
 		// Stick - to the first digit
 		if (temperatureInteger / 10 > 0)
 		{
@@ -859,8 +863,8 @@ char* readThermometerDecimal()
 	}
 	else
 	{
-		temperatureInteger = (ambientTemperature >> 8) & 0x00FF;
-		temperatureDecimal = ((ambientTemperature >> 6) & 0x03) * 25;
+		temperatureInteger = ambientTemperatureTwoDecimals / 100;
+		temperatureDecimal = ambientTemperatureTwoDecimals % 100;
 		if (temperatureInteger / 100 > 0)
 		{
 			str_buffer[0] = bcd2char(dec2bcd((unsigned char) temperatureInteger / 100));
@@ -887,8 +891,8 @@ char* readThermometerDecimal()
 	str_buffer[6]='C';
 	str_buffer[7]=' ';
 	return str_buffer;
-
 }
+
 
 unsigned char updateDisplay1(unsigned char* str, unsigned char decimal_dots_mask, unsigned char special_dots_mask)
 {

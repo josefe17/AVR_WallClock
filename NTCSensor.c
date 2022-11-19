@@ -37,7 +37,7 @@ double readTempKelvin(unsigned char channel, unsigned int const AVERAGE_COUNT, u
 	}
 	else
 	{
-		raw	= (double) readADC(channel);
+		raw	= (double)  (channel);
 	}	
 	raw = (ADC_RESOLUTION-1) / raw -1;
 	double resistance = SERIESRESISTOR_OHMS / raw;
