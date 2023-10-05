@@ -16,6 +16,7 @@
 #include "GPIO.h"
 #include "ADCDriver.h"
 #include "NTCSensor.h"
+#include "DST.h"
 
 #define MS_TIMER_COUNT	78
 #define MS_DELAY_CYCLES	1
@@ -229,6 +230,8 @@ int main (void)
 	set_brightness_display(HT16K33_4_WRITE_ADDRESS,adc_buffer);
 	timer0_tick_init(T0_PRESCALER_256, MS_TIMER_COUNT, MS_DELAY_CYCLES);
 	startCogWheel();
+	current_time=retrieve_timestamp_from_RTC(DS3231_WRITE_ADDRESS, DATA_DECIMAL);
+	DSTInit(&current_time);
 
 	while(1)
 	{	
@@ -236,6 +239,7 @@ int main (void)
 		power_fail_flag=check_oscillator_fault(DS3231_WRITE_ADDRESS);
 		increment_fast_skip_timer();
 		update_button_flags();
+		processDST(&current_time);
 		adc_buffer = (unsigned char) ((readADC(0) >> 6) & 0x0F); // 4 MSB
 		set_brightness_display(HT16K33_1_WRITE_ADDRESS, adc_buffer);
 		set_brightness_display(HT16K33_5_WRITE_ADDRESS, (adc_buffer + 2 < 16) ? adc_buffer + 2 : adc_buffer);

@@ -11,10 +11,12 @@
 
 #include "date.h"
 
+#define DST_EEPROM_ADDRESS 10
+
 typedef enum
 {
-	DST_EU,
-	DST_USA	
+	DST_EU = 0,
+	DST_USA = 1	
 }DSTRegions;
 
 typedef struct
@@ -25,27 +27,26 @@ typedef struct
 	unsigned char dstForwardHour: 5;
 }DSTData;
 
-void DSTInit(void);
+unsigned char DSTInit(volatile time_data* currentTime);
+unsigned char processDST(volatile time_data* currentTime);
 
-void enableDST(void);
-void disableDST(void);
+unsigned char enableDST(void);
+unsigned char disableDST(void);
 unsigned char getDSTEnabledStatus(void);
+char* getDSTNameString(void);
+char* getDSTOnString(void);
+char* getDSTOffString(void);
 
-void setDSTEURegion(void);
-void setDSTUSARegion(void);
+unsigned char setDSTEURegion(void);
+unsigned char setDSTUSARegion(void);
 DSTRegions getDSTRegion(void);
+char* getDSTRegionCaptionString(void);
+char* getDSTEURegionString(void);
+char* getDSTUSARegionString(void);
 
-void setEUDSTForwardHour (unsigned char hour); // Return hour is forward + 1, as both happens at GMT + 1
+unsigned char setEUDSTForwardHour (unsigned char hour); // Return hour is forward + 1, as both happens at GMT + 1
 unsigned char getEUDSTForwardHour(void);
-
-unsigned char checkDST(time_data* currentTime);
-
-unsigned char updateDSTOnStartup(time_data* currentTime);
-
-// Todo printf functions for enabled, regions and forward time
-
-
-
+char* getDSTForwardHourCaptionString(void);
 
 
 #endif /* DST_H_ */
