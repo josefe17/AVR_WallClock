@@ -29,6 +29,7 @@ typedef struct
 
 unsigned char DSTInit(volatile time_data* currentTime);
 unsigned char processDST(volatile time_data* currentTime);
+unsigned char getDSTCurrentStatus(void);
 
 unsigned char enableDST(void);
 unsigned char disableDST(void);

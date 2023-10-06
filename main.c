@@ -331,7 +331,7 @@ void showtime(fsm_t* this)
 
 	updateDisplay3((unsigned char*) getDayOfWeekSpanishNameUppercase8Char(current_time),  0, 0);
 
-	updateDisplay4(readThermometer(), 0, updateCogwheel());
+	updateDisplay4(readThermometer(), getDSTCurrentStatus() << 2, updateCogwheel());
 
 }
 

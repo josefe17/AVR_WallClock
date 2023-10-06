@@ -92,6 +92,14 @@ void display_update(unsigned char I2C_display_address, unsigned char display_typ
 			{
 				clear_decimal_dot(display_TX_buffer_t.fields.segments, 5, 1);
 			}
+			if (decimal_dots_mask & 4) // dts (DST) flag indicator
+			{
+				set_decimal_dot(display_TX_buffer_t.fields.segments, 9, 1);
+			}
+			else
+			{
+				clear_decimal_dot(display_TX_buffer_t.fields.segments, 9, 1);
+			}
 		break;
 		default:
 		case DISPLAY_SC15:

@@ -39,6 +39,11 @@ unsigned char processDST(volatile time_data* currentTime)
 	return 1;
 }
 
+unsigned char getDSTCurrentStatus(void)
+{
+	return dstData.dstStatus;
+}
+
 unsigned char enableDST(void)
 {
 	if (dstData.dstEnabled != 1)
